@@ -1,30 +1,35 @@
 
 # Problem
 
-The Western Water Data Hub [search interface](https://doimspp.sharepoint.com/:b:/r/sites/bor-lincoln-wswc-interop-water-data-hub/Shared%20Documents/General/Visualization%20Tool/National%20Data%20Explorer%20update_10_15_2024.pdf?csf=1&web=1&e=BHU9JD) is designed to search across supported data sources using the EDR API. The proposed search categories are outlined below
+The Western Water Data Hub [search interface](https://doimspp.sharepoint.com/:b:/r/sites/bor-lincoln-wswc-interop-water-data-hub/Shared%20Documents/General/Visualization%20Tool/National%20Data%20Explorer%20update_10_15_2024.pdf?csf=1&web=1&e=BHU9JD) is designed to search across supported data sources using the EDR API. The proposed search categories and filters are outlined below
 
 # Hub Search Filters
+
+
+> Note: The following sections make use of the URI schema `jq:` which is intended to show the reader the intended JSON path the the referenced element value within a JSON-LD document if the [jq](https://jqlang.org/) utility was used.  For instance `jq:.geometry.coordinates` references a JSON(-LD) document with the nested property geometry -> coordinates like `{ "geometry":{"coordinates":  <some value>}}` where `<some value>` is the referenced value returned from the `jq` filter `.geometry.coordinates`.
 
 ## Filter by Location
 
 Location filters are segmented into (HUC02) Watersheds, States, and Counties. 
 
+> Should we have Reclamation Regions as well?
+
 ### Filter by Watershed
 
-Watershed contains a list of HUC02 watersheds that intersect with one or more of the 17 western states in Bureau of Reclamation jusrisdiction. Names and  geographic boundaries for these watersheds can be found in the Geoconnex reference feature server [here](https://reference.geoconnex.us/collections/hu02) as  collection item listings by fetching  each collection item  as jsonld `?f=jsonld` and extracting the name `jq:.name` and  (MultiPolydon) coordinates for the watershed  `jq:.geometry.coordinates`.
+Watershed contains a list of HUC02 watersheds that intersect with one or more of the 17 western states within the Bureau of Reclamation (Reclamation) jusrisdiction. Names and  geographic boundaries for these watersheds can be found in the Geoconnex reference feature server [here](https://reference.geoconnex.us/collections/hu02) as  collection item listings by fetching  each collection item resource as a JSON-LD document  `?f=jsonld` and extracting the name `jq:.name` and  (MultiPolydon) coordinates for the watershed  `jq:.geometry.coordinates`.
 
-> Note: need a way to filter all watersheds to only the ones that intersect with the bureau of Reclamation regions?
+> Note: need a way to filter all watersheds to only the ones that intersect with the Reclamation regions?
 
 
 ### States
 
-List of 17 western states which are under Reclamation's jurisdiction. Geographic boundaries can be found in the Geoconnex reference feature server [here](https://reference.geoconnex.us/collections/states/). Iterating each collection item and fetching its JSON-LD representation `?f=jsonld` will provide the state code `jq:.stusps`, state name `jq:.name`, and (MultiPolygon) coordinates `jq:geometry.coordinates`. 
+List of [17 western states](https://www.usbr.gov/main/images/region-map-small.jpg) which are under Reclamation's jurisdiction. Geographic boundaries can be found in the Geoconnex reference feature server [here](https://reference.geoconnex.us/collections/states/). Iterating each collection item and fetching its JSON-LD representation `?f=jsonld` will provide the state code `jq:.stusps`, state name `jq:.name`, and (MultiPolygon) coordinates `jq:geometry.coordinates`. 
 
 ## Filter by Data Category
 
 ### Category
 
-I believe `Category` as shown in the search interface is synonymous with USBR RISE system's `Parameter Group` term. In this context, a canonical Parameter Group designation **COULD BE** be fetched from the JSONLD representation of the `/collections` resource similar to each collection item having a `parameter_names` property in the JSON document representation of the collection item. This collection level list of the canonical  parameter names would be the Data Category/Parameter Group variables that are sourced from the ontology. 
+I believe `Category` as shown in the search interface is synonymous with USBR RISE system's `Parameter Group` term. In this context, a canonical Parameter Group designation **COULD BE** be fetched from the JSONLD representation of the `/collections` resource similar to each collection item having a `parameter_names` property in the JSON document representation of the collection item. This collection level list of the canonical  parameter names would be the Data Category/Parameter Group variables that are sourced from the USBR ontology. 
 
 > Need to investigate the feasibility of exposing the parameter group names in `/collections` json(-ld) resource to be able to populate this list and still remain conformant to EDR (I hope)
 
@@ -33,7 +38,7 @@ I believe `Category` as shown in the search interface is synonymous with USBR RI
 
 ### Dataset
 
-I believe `Dataset` here is synonymous with USBR RISE system's `Parameter` term. The population of this listing is dependent upon the selection of a `Category` (Parameter Group) filter where parameters 
+I believe `Dataset` here is synonymous with USBR RISE system's `Parameter` term. The population of this listing is dependent upon the selection of a `Category` (Parameter Group) filter where parameters are Objects of SKOS `narrower`
 
 ## Filter by Provider 
 
@@ -64,11 +69,11 @@ sequenceDiagram
 autonumber
 actor HubUser
 participant HubSearchPage
-participant EDRAPI
+#participant EDRAPI
 participant RefFeatureServer
 
 HubUser ->> HubSearchPage: load
-HubSearchPage ->> HubSearchPage: populate Watershed Dropdown
+HubSearchPage ->> HubSearchPage: populate Watershed/Basin Dropdown
 activate HubSearchPage
 HubSearchPage ->> RefFeatureServer: GET /collections/hu02
 loop For Each Collection ID
@@ -83,29 +88,142 @@ HubSearchPage ->> HubSearchPage: populate States Dropdown
 activate HubSearchPage
 HubSearchPage ->> RefFeatureServer: GET /collections/states
 loop For Each Collection ID
-HubSearchPage ->> RefFeatureServer: /collections/states/items/{collectionId}
-RefFeatureServer -->> HubSearchPage: jq:.name
-RefFeatureServer -->> HubSearchPage: jq:.statefp
-RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
-
+  HubSearchPage ->> RefFeatureServer: /collections/states/items/{collectionId}
+  RefFeatureServer -->> HubSearchPage: jq:.name
+  RefFeatureServer -->> HubSearchPage: jq:.statefp
+  RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
 end
 deactivate HubSearchPage
-
 HubUser ->> HubSearchPage: Select State
-HubSearchPage ->> HubSearchPage: populate Counties Dropdown
+
+
+HubSearchPage ->> HubSearchPage: populate USBR Regions Dropdown
 activate HubSearchPage
-HubSearchPage ->> RefFeatureServer: GET /collections/counties
-loop For Each County  
-HubSearchPage ->> RefFeatureServer: /collections/counties/items/{collectionId}
-RefFeatureServer -->> HubSearchPage: jq:.statefp
-RefFeatureServer -->> HubSearchPage: jq:.name
-RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
-alt Selected State jq:.statefp equals County jq.statefp?
-  HubSearchPage ->> HubSearchPage: Add County to Country Dropdown List
-end
+HubSearchPage ->> RefFeatureServer: GET /collections/<usbr region item>
+loop For Each Region  
+  HubSearchPage ->> RefFeatureServer: /collections/<usbr region item>/items/{collectionId}
+  RefFeatureServer -->> HubSearchPage: jq:.name
+  RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
 end
 deactivate HubSearchPage
 
 ```
+## Select  Filters
 
-## Construct Search 
+```mermaid
+sequenceDiagram
+#autonumber
+actor HubUser
+participant HubSearchPage
+#participant EDRAPI
+#participant RefFeatureServer
+
+
+HubUser->>HubSearchPage: Select Location Filter
+alt 
+  HubUser->>HubSearchPage: Select Basin
+else 
+  HubUser->>HubSearchPage: Select USBR Region
+else 
+  HubUser->>HubSearchPage: Select State
+end
+
+HubSearchPage-->>HubSearchPage: Save as [location filter]
+opt Filter By Data Category
+    HubUser->>HubSearchPage: Select Category
+    HubSearchPage->>HubSearchPage: Save as [category filter]
+end
+opt Filter By Data Category
+    HubUser->>HubSearchPage: Select Dataset
+    HubSearchPage->>HubSearchPage: Save as client-side  filter [dataset filter] 
+end
+
+
+
+opt Filter By Provider
+    HubUser->>HubSearchPage: Select Provider
+    HubSearchPage->>HubSearchPage: Save as client-side filter [provider filter] for EDR Collection items
+end
+
+
+opt Filter By Time
+   HubUser->HubSearchPage: Select time range in last N years
+   activate HubSearchPage
+   HubSearchPage->HubSearchPage: convert last N years to "datetime" range per EDR "datetime" query param format
+   HubSearchPage->HubSearchPage: Save as [last N years filter] 
+   deactivate HubSearchPage
+  
+end
+
+```
+
+
+## Download All Sites 
+
+```mermaid
+sequenceDiagram
+#autonumber
+actor HubUser
+participant HubSearchPage
+participant EDRAPI
+#participant RefFeatureServer
+
+HubUser->>HubSearchPage: Click Download All Sites 
+
+alt [category filter] is Saved
+  
+  HubSearchPage->>EDRAPI: GET /collections?parameter-name=[category filter]&f=jsonld
+  loop For Each {collectionId} ...
+      EDRAPI-->>HubSearchPage: schema:DataCatalog 
+      alt [provider filter] is Saved 
+           HubSearchPage->>HubSearchPage: filter by [provider filter]
+      end
+      alt [dataset filter] is Saved
+           HubSearchPage->>HubSearchPage: filter by [dataset filter]
+  
+      end
+
+      alt [location filter] is Saved
+           HubSearchPage->>HubSearchPage: set query param 'coords' to [location filter]
+           
+      end
+      alt [last N years] is Saved
+           HubSearchPage->>HubSearchPage: set query param 'datetime' to [last N years filter]
+     
+      end
+      HubSearchPage ->> EDRAPI: Get timeseries for {collectionId} using set query params 
+      EDRAPI-->>HubSearchPage: Timeseries
+      HubSearchPage-->>HubUser: Timeseries
+
+  end
+  
+else All Collection Ids
+  HubSearchPage->>EDRAPI: GET /collections?f=jsonld
+  loop For Each {collectionId} ...
+      EDRAPI-->>HubSearchPage: schema:DataCatalog 
+      alt [provider filter] is Saved 
+           HubSearchPage->>HubSearchPage: filter by [provider filter]
+      end
+      alt [dataset filter] is Saved
+           HubSearchPage->>HubSearchPage: filter by [dataset filter]
+  
+      end
+
+      alt [location filter] is Saved
+           HubSearchPage->>HubSearchPage: set query param 'coords' to [location filter]
+           
+      end
+      alt [last N years] is Saved
+           HubSearchPage->>HubSearchPage: set query param 'datetime' to [last N years filter]
+     
+      end
+      HubSearchPage ->> EDRAPI: Get timeseries for {collectionId} using set query params 
+      EDRAPI-->>HubSearchPage: Timeseries
+      HubSearchPage-->>HubUser: Timeseries
+
+  end
+
+end 
+
+```
+
