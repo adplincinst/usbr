@@ -64,6 +64,9 @@ The JSON-LD representation for each collection item allow for the specification 
 # Sequence Diagrams
 
 ## Load Location Filters
+
+Describes interactions when Hub Search Page loads
+
 ```mermaid
 sequenceDiagram
 autonumber
@@ -73,92 +76,50 @@ participant HubSearchPage
 participant RefFeatureServer
 
 HubUser ->> HubSearchPage: load
-HubSearchPage ->> HubSearchPage: populate Watershed/Basin Dropdown
+HubSearchPage ->> HubSearchPage: Populate Basin Dropdown
 activate HubSearchPage
 HubSearchPage ->> RefFeatureServer: GET /collections/hu02
 loop For Each Collection ID
-HubSearchPage ->> RefFeatureServer: /collections/hu02/items/{collectionId}
-RefFeatureServer -->> HubSearchPage: jq:.name
-RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
+HubSearchPage ->> RefFeatureServer: /collections/hu02/items/{collectionId}?f=json
+RefFeatureServer -->> HubSearchPage: Feature object
+activate HubSearchPage
+HubSearchPage ->> HubSearchPage: jq:.properties.name
+HubSearchPage ->> HubSearchPage: jq:.geometry.coordinates
+deactivate HubSearchPage
+
 end
 deactivate HubSearchPage
 
 
-HubSearchPage ->> HubSearchPage: populate States Dropdown
+HubSearchPage ->> HubSearchPage: Populate States Dropdown
 activate HubSearchPage
 HubSearchPage ->> RefFeatureServer: GET /collections/states
 loop For Each Collection ID
-  HubSearchPage ->> RefFeatureServer: /collections/states/items/{collectionId}
-  RefFeatureServer -->> HubSearchPage: jq:.name
-  RefFeatureServer -->> HubSearchPage: jq:.statefp
-  RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
+  HubSearchPage ->> RefFeatureServer: /collections/states/items/{collectionId}?f=json
+  RefFeatureServer-->> HubSearchPage: Feature object
+  activate HubSearchPage
+  HubSearchPage -->> HubSearchPage: jq:.properties.name
+  HubSearchPage -->> HubSearchPage: jq:.geometry.coordinates
+  deactivate HubSearchPage
 end
 deactivate HubSearchPage
-HubUser ->> HubSearchPage: Select State
 
 
-HubSearchPage ->> HubSearchPage: populate USBR Regions Dropdown
+HubSearchPage ->> HubSearchPage: Populate USBR Regions Dropdown
 activate HubSearchPage
-HubSearchPage ->> RefFeatureServer: GET /collections/<usbr region item>
-loop For Each Region  
-  HubSearchPage ->> RefFeatureServer: /collections/<usbr region item>/items/{collectionId}
-  RefFeatureServer -->> HubSearchPage: jq:.name
-  RefFeatureServer -->> HubSearchPage: jq:.geometry.coordinates
+HubSearchPage ->> RefFeatureServer: GET https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/DOI_Unified_Regions/FeatureServer/0
+RefFeatureServer -->> HubSearchPage: GeoJSON
+
+loop For Each Reclamation Region
+  HubSearchPage ->> HubSearchPage: Extract Region Coordinates
+  HubSearchPage ->> HubSearchPage: Extract Region Name
+
 end
 deactivate HubSearchPage
 
 ```
 ## Select  Filters
-
-```mermaid
-sequenceDiagram
-#autonumber
-actor HubUser
-participant HubSearchPage
-#participant EDRAPI
-#participant RefFeatureServer
-
-
-HubUser->>HubSearchPage: Select Location Filter
-alt 
-  HubUser->>HubSearchPage: Select Basin
-else 
-  HubUser->>HubSearchPage: Select USBR Region
-else 
-  HubUser->>HubSearchPage: Select State
-end
-
-HubSearchPage-->>HubSearchPage: Save as [location filter]
-opt Filter By Data Category
-    HubUser->>HubSearchPage: Select Category
-    HubSearchPage->>HubSearchPage: Save as [category filter]
-end
-opt Filter By Data Category
-    HubUser->>HubSearchPage: Select Dataset
-    HubSearchPage->>HubSearchPage: Save as client-side  filter [dataset filter] 
-end
-
-
-
-opt Filter By Provider
-    HubUser->>HubSearchPage: Select Provider
-    HubSearchPage->>HubSearchPage: Save as client-side filter [provider filter] for EDR Collection items
-end
-
-
-opt Filter By Time
-   HubUser->HubSearchPage: Select time range in last N years
-   activate HubSearchPage
-   HubSearchPage->HubSearchPage: convert last N years to "datetime" range per EDR "datetime" query param format
-   HubSearchPage->HubSearchPage: Save as [last N years filter] 
-   deactivate HubSearchPage
-  
-end
-
-```
-
-
-## Download All Sites 
+Describes behavior when user selects filters.
 
 ```mermaid
 sequenceDiagram
@@ -168,9 +129,72 @@ participant HubSearchPage
 participant EDRAPI
 #participant RefFeatureServer
 
-HubUser->>HubSearchPage: Click Download All Sites 
+critical Select Provider
+  HubUser->>HubSearchPage: 
+  HubSearchPage->>HubSearchPage: Save filter [provider filter] for EDR Collection items
 
-alt [category filter] is Saved
+  option Select Location Filter
+  alt 
+    HubUser->>HubSearchPage: Select Basin
+  else 
+    HubUser->>HubSearchPage: Select USBR Region
+  else 
+    HubUser->>HubSearchPage: Select State
+  end
+  HubSearchPage-->>HubSearchPage: Save as [location filter]
+  
+  option Select Data Category
+    HubUser->>HubSearchPage: Select Category
+    HubSearchPage->>HubSearchPage: Save as [category filter]
+
+  option Select Dataset
+    HubUser->>HubSearchPage: Select Dataset
+    HubSearchPage->>HubSearchPage: Save as client-side  filter [dataset filter] 
+
+end
+
+loop for each collectionId in EDR collections
+  HubSearchPage->>EDRAPI: GET /collections/{collectionId}?f=jsonld
+  EDRAPI-->>HubSearchPage: schema:DataCatalog object
+  critical schema:DataCatalog provider object equials [provider filter]
+    HubSearchPage->EDRAPI: GET /collections/{collectionId}/locations
+    HubSearchPage->HubSearchPage: Add features to Map
+  end   
+end
+
+HubUser->>HubSearchPage: click feature on map
+activate HubSearchPage
+HubSearchPage->>EDRAPI: Get timeseries for clicked feature
+EDRAPI-->>HubSearchPage: timeseries data
+HubSearchPage->>HubSearchPage: display timeseries 
+opt Change Date Range?
+  HubUser->>HubSearchPage: Change date range  
+end
+opt Download Timeseries as CSV?
+  HubUser->>HubSearchPage: Click download
+  HubSearchPage-->>HubUser: CSV file
+end
+deactivate HubSearchPage
+
+```
+
+
+## Download All Sites (Timeseries Data) 
+
+> NOTE: Currently this thought to be an intensive high-latency operation. This is on HOLD as of 08/24/25
+
+
+```mermaid
+sequenceDiagram
+#autonumber
+actor HubUser
+participant HubSearchPage
+participant EDRAPI
+#participant RefFeatureServer
+
+HubUser->>HubSearchPage: Download
+
+critical [category filter] is Saved AND 
   
   HubSearchPage->>EDRAPI: GET /collections?parameter-name=[category filter]&f=jsonld
   loop For Each {collectionId} ...
@@ -197,33 +221,7 @@ alt [category filter] is Saved
 
   end
   
-else All Collection Ids
-  HubSearchPage->>EDRAPI: GET /collections?f=jsonld
-  loop For Each {collectionId} ...
-      EDRAPI-->>HubSearchPage: schema:DataCatalog 
-      alt [provider filter] is Saved 
-           HubSearchPage->>HubSearchPage: filter by [provider filter]
-      end
-      alt [dataset filter] is Saved
-           HubSearchPage->>HubSearchPage: filter by [dataset filter]
-  
-      end
-
-      alt [location filter] is Saved
-           HubSearchPage->>HubSearchPage: set query param 'coords' to [location filter]
-           
-      end
-      alt [last N years] is Saved
-           HubSearchPage->>HubSearchPage: set query param 'datetime' to [last N years filter]
-     
-      end
-      HubSearchPage ->> EDRAPI: Get timeseries for {collectionId} using set query params 
-      EDRAPI-->>HubSearchPage: Timeseries
-      HubSearchPage-->>HubUser: Timeseries
-
-  end
-
-end 
+end
 
 ```
 
