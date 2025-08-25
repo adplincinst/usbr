@@ -74,6 +74,8 @@ actor HubUser
 participant HubSearchPage
 #participant EDRAPI
 participant RefFeatureServer
+participant ArcGIS
+
 
 HubUser ->> HubSearchPage: load
 HubSearchPage ->> HubSearchPage: Populate Basin Dropdown
@@ -107,8 +109,8 @@ deactivate HubSearchPage
 
 HubSearchPage ->> HubSearchPage: Populate USBR Regions Dropdown
 activate HubSearchPage
-HubSearchPage ->> RefFeatureServer: GET https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/DOI_Unified_Regions/FeatureServer/0
-RefFeatureServer -->> HubSearchPage: GeoJSON
+HubSearchPage ->> ArcGIS: GET https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/DOI_Unified_Regions/FeatureServer/0
+ArcGIS -->> HubSearchPage: GeoJSON
 
 loop For Each Reclamation Region
   HubSearchPage ->> HubSearchPage: Extract Region Coordinates
